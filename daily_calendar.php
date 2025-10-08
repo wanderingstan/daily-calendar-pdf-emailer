@@ -152,12 +152,25 @@ function parseICalDate($dateString) {
         }
     }
 
-    // Check if it's a datetime format (15 characters: YYYYMMDDTHHMMSS)
-    if (strlen($dateString) >= 15) {
-        // Remove any trailing Z or timezone info
+    // Check if it's a datetime format with Z suffix (UTC time)
+    if (strlen($dateString) >= 16 && substr($dateString, -1) === 'Z') {
+        // UTC format: YYYYMMDDTHHMMSSZ
         $cleanDate = substr($dateString, 0, 15);
 
-        // DateTime format: YYYYMMDDTHHMMSS
+        // Parse as UTC, then convert to local timezone
+        $dt = DateTime::createFromFormat('Ymd\THis', $cleanDate, new DateTimeZone('UTC'));
+        if ($dt) {
+            // Convert to the configured timezone
+            $dt->setTimezone(new DateTimeZone($TIMEZONE));
+            return $dt->getTimestamp();
+        }
+    }
+
+    // Check if it's a datetime format without Z (local time)
+    if (strlen($dateString) >= 15) {
+        $cleanDate = substr($dateString, 0, 15);
+
+        // DateTime format: YYYYMMDDTHHMMSS (assume local timezone)
         $dt = DateTime::createFromFormat('Ymd\THis', $cleanDate, new DateTimeZone($TIMEZONE));
         if ($dt) {
             return $dt->getTimestamp();
