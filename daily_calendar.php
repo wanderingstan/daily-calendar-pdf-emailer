@@ -7,19 +7,39 @@ ini_set('display_errors', 1);
  *
  * Fetches Google Calendar events and emails a PDF to printer
  * Run via cron job daily
+ *
+ * Usage:
+ *   php daily_calendar.php              - Send to printer via email
+ *   php daily_calendar.php --test       - Save PDF to file for testing
+ *   php daily_calendar.php --output=filename.pdf - Save to specific file
  */
 
 require_once __DIR__ . '/vendor/autoload.php';
 
 use Dotenv\Dotenv;
 
+// Parse command line arguments
+$testMode = false;
+$outputFile = null;
+
+if (isset($argv)) {
+    foreach ($argv as $arg) {
+        if ($arg === '--test') {
+            $testMode = true;
+            $outputFile = 'calendar-test-' . date('Y-m-d') . '.pdf';
+        } elseif (strpos($arg, '--output=') === 0) {
+            $testMode = true;
+            $outputFile = substr($arg, 9);
+        }
+    }
+}
+
 // Load environment variables from .env file
-// Place .env file OUTSIDE public_html for security
 if (file_exists(__DIR__ . '/.env')) {
     $dotenv = Dotenv::createImmutable(__DIR__);
     $dotenv->load();
 } else {
-    die("Error: .env file not found at {__DIR__}/.env\n");
+    die("Error: .env file not found at " . __DIR__ . "/.env\n");
 }
 
 // Configuration from environment variables
@@ -69,20 +89,21 @@ function parseICalEvents($icalData) {
                 $currentEvent = null;
             }
         } elseif ($currentEvent !== null && strpos($line, ':') !== false) {
-            list($key, $value) = explode(':', $line, 2);
+            // Split only on first colon to preserve colons in values
+            $colonPos = strpos($line, ':');
+            $key = substr($line, 0, $colonPos);
+            $value = substr($line, $colonPos + 1);
 
             // Handle common iCal fields
-            if ($key === 'SUMMARY') {
+            if ($key === 'SUMMARY' || strpos($key, 'SUMMARY') === 0) {
                 $currentEvent['title'] = $value;
-            } elseif ($key === 'DTSTART') {
+            } elseif ($key === 'DTSTART' || strpos($key, 'DTSTART') === 0) {
+                // Handle DTSTART with or without parameters like DTSTART;TZID=...
                 $currentEvent['start'] = parseICalDate($value);
-            } elseif ($key === 'DTEND') {
+                $currentEvent['all_day'] = strpos($key, 'VALUE=DATE') !== false && strpos($key, 'VALUE=DATE-TIME') === false;
+            } elseif ($key === 'DTEND' || strpos($key, 'DTEND') === 0) {
                 $currentEvent['end'] = parseICalDate($value);
-            } elseif (strpos($key, 'DTSTART') === 0) {
-                // Handle DTSTART with parameters like DTSTART;VALUE=DATE
-                $currentEvent['start'] = parseICalDate($value);
-                $currentEvent['all_day'] = strpos($key, 'VALUE=DATE') !== false;
-            } elseif ($key === 'DESCRIPTION') {
+            } elseif ($key === 'DESCRIPTION' || strpos($key, 'DESCRIPTION') === 0) {
                 $currentEvent['description'] = $value;
             }
         }
@@ -95,18 +116,34 @@ function parseICalEvents($icalData) {
  * Parse iCal date format to timestamp
  */
 function parseICalDate($dateString) {
-    // Remove timezone info if present (basic parsing)
-    $dateString = preg_replace('/[TZ].*$/', '', $dateString);
+    global $TIMEZONE;
 
-    if (strlen($dateString) === 8) {
+    // Clean up the string - remove any carriage returns or extra whitespace
+    $dateString = trim($dateString);
+
+    // Check if it's a date-only format (8 characters: YYYYMMDD)
+    if (strlen($dateString) === 8 && ctype_digit($dateString)) {
         // Date only format: YYYYMMDD
-        return DateTime::createFromFormat('Ymd', $dateString)->getTimestamp();
-    } elseif (strlen($dateString) >= 15) {
-        // DateTime format: YYYYMMDDTHHMMSS
-        return DateTime::createFromFormat('Ymd\THis', substr($dateString, 0, 15))->getTimestamp();
+        $dt = DateTime::createFromFormat('Ymd', $dateString, new DateTimeZone($TIMEZONE));
+        if ($dt) {
+            return $dt->getTimestamp();
+        }
     }
 
-    return time(); // fallback
+    // Check if it's a datetime format (15 characters: YYYYMMDDTHHMMSS)
+    if (strlen($dateString) >= 15) {
+        // Remove any trailing Z or timezone info
+        $cleanDate = substr($dateString, 0, 15);
+
+        // DateTime format: YYYYMMDDTHHMMSS
+        $dt = DateTime::createFromFormat('Ymd\THis', $cleanDate, new DateTimeZone($TIMEZONE));
+        if ($dt) {
+            return $dt->getTimestamp();
+        }
+    }
+
+    // Fallback
+    return time();
 }
 
 /**
@@ -195,14 +232,25 @@ function createCalendarPDF($events) {
         }
     }
 
-    // Generate PDF string
-    return $pdf->Output('', 'S');
+    // Return PDF object (not string) for flexibility
+    return $pdf;
+}
+
+/**
+ * Save PDF to file
+ */
+function savePDFToFile($pdf, $filename) {
+    $pdf->Output(__DIR__ . '/' . $filename, 'F');
+    echo "PDF saved to: " . __DIR__ . '/' . $filename . "\n";
 }
 
 /**
  * Send email with PDF attachment using PHPMailer
  */
-function sendCalendarEmail($pdfContent, $printerEmail) {
+function sendCalendarEmail($pdf, $printerEmail) {
+    // Get PDF as string
+    $pdfContent = $pdf->Output('', 'S');
+
     $mail = new PHPMailer\PHPMailer\PHPMailer(true);
 
     try {
@@ -239,6 +287,10 @@ function sendCalendarEmail($pdfContent, $printerEmail) {
  * Main execution
  */
 try {
+    if ($testMode) {
+        echo "Running in TEST mode - PDF will be saved to file\n";
+    }
+
     echo "Fetching calendar events...\n";
     $events = fetchCalendarEvents($CALENDAR_URL);
 
@@ -248,12 +300,18 @@ try {
     echo "Found " . count($todayEvents) . " events for today.\n";
 
     echo "Creating PDF...\n";
-    $pdfContent = createCalendarPDF($todayEvents);
+    $pdf = createCalendarPDF($todayEvents);
 
-    echo "Sending to printer...\n";
-    sendCalendarEmail($pdfContent, $PRINTER_EMAIL);
-
-    echo "Daily calendar printed successfully!\n";
+    if ($testMode) {
+        // Save to file for testing
+        savePDFToFile($pdf, $outputFile);
+        echo "Test complete! Check the PDF file.\n";
+    } else {
+        // Send to printer via email
+        echo "Sending to printer...\n";
+        sendCalendarEmail($pdf, $PRINTER_EMAIL);
+        echo "Daily calendar printed successfully!\n";
+    }
 
 } catch (Exception $e) {
     error_log("Calendar printer error: " . $e->getMessage());
