@@ -43,7 +43,8 @@ if (file_exists(__DIR__ . '/.env')) {
 }
 
 // Configuration from environment variables
-$CALENDAR_URL = $_ENV['CALENDAR_ICAL_URL'];
+// Support multiple calendar URLs separated by commas
+$CALENDAR_URLS = array_map('trim', explode(',', $_ENV['CALENDAR_ICAL_URL']));
 $PRINTER_EMAIL = $_ENV['PRINTER_EMAIL'];
 $TIMEZONE = $_ENV['TIMEZONE'] ?? 'America/Denver';
 
@@ -57,6 +58,27 @@ $FROM_NAME = $_ENV['FROM_NAME'] ?? 'Calendar Printer';
 
 // Set timezone
 date_default_timezone_set($TIMEZONE);
+
+/**
+ * Fetch and parse iCal data from multiple calendars
+ */
+function fetchAllCalendarEvents($calendarUrls) {
+    $allEvents = [];
+
+    foreach ($calendarUrls as $index => $url) {
+        try {
+            echo "Fetching calendar " . ($index + 1) . " of " . count($calendarUrls) . "...\n";
+            $events = fetchCalendarEvents($url);
+            echo "  Found " . count($events) . " total events\n";
+            $allEvents = array_merge($allEvents, $events);
+        } catch (Exception $e) {
+            echo "  Warning: Failed to fetch calendar from " . substr($url, 0, 50) . "...: " . $e->getMessage() . "\n";
+            // Continue with other calendars even if one fails
+        }
+    }
+
+    return $allEvents;
+}
 
 /**
  * Fetch and parse iCal data from Google Calendar
@@ -291,8 +313,10 @@ try {
         echo "Running in TEST mode - PDF will be saved to file\n";
     }
 
-    echo "Fetching calendar events...\n";
-    $events = fetchCalendarEvents($CALENDAR_URL);
+    echo "Fetching calendar events from " . count($CALENDAR_URLS) . " calendar(s)...\n";
+    $events = fetchAllCalendarEvents($CALENDAR_URLS);
+
+    echo "\nTotal events fetched: " . count($events) . "\n";
 
     echo "Filtering today's events...\n";
     $todayEvents = getTodayEvents($events);
