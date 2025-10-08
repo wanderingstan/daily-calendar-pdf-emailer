@@ -47,6 +47,7 @@ if (file_exists(__DIR__ . '/.env')) {
 $CALENDAR_URLS = array_map('trim', explode(',', $_ENV['CALENDAR_ICAL_URL']));
 $PRINTER_EMAIL = $_ENV['PRINTER_EMAIL'];
 $TIMEZONE = $_ENV['TIMEZONE'] ?? 'America/Denver';
+$CALENDAR_TITLE = $_ENV['CALENDAR_TITLE'] ?? 'Daily Calendar';
 
 // Email configuration from environment
 $SMTP_HOST = $_ENV['SMTP_HOST'];
@@ -207,12 +208,14 @@ function getTodayEvents($events) {
  * Create PDF using TCPDF library
  */
 function createCalendarPDF($events) {
+    global $CALENDAR_TITLE;
+
     // Create new PDF document
     $pdf = new TCPDF(PDF_PAGE_ORIENTATION, PDF_UNIT, PDF_PAGE_FORMAT, true, 'UTF-8', false);
 
     // Set document information
     $pdf->SetCreator('Calendar Printer');
-    $pdf->SetTitle('Daily Calendar - ' . date('F j, Y'));
+    $pdf->SetTitle($CALENDAR_TITLE . ' - ' . date('F j, Y'));
 
     // Remove default header/footer
     $pdf->setPrintHeader(false);
@@ -221,26 +224,27 @@ function createCalendarPDF($events) {
     // Add a page
     $pdf->AddPage();
 
-    // Set font
-    $pdf->SetFont('helvetica', 'B', 20);
+    // Title - MUCH larger font (was 20, now 40)
+    $pdf->SetFont('helvetica', 'B', 40);
+    $pdf->Cell(0, 25, $CALENDAR_TITLE, 0, 1, 'C');
 
-    // Title
-    $pdf->Cell(0, 15, 'Daily Calendar', 0, 1, 'C');
-    $pdf->SetFont('helvetica', '', 16);
-    $pdf->Cell(0, 10, date('l, F j, Y'), 0, 1, 'C');
-    $pdf->Ln(10);
+    // Date - MUCH larger font (was 16, now 32)
+    $pdf->SetFont('helvetica', '', 32);
+    $pdf->Cell(0, 20, date('l, F j, Y'), 0, 1, 'C');
+    $pdf->Ln(15);
 
     // Events
     if (empty($events)) {
-        $pdf->SetFont('helvetica', 'I', 14);
-        $pdf->Cell(0, 10, 'No events scheduled for today', 0, 1, 'C');
+        $pdf->SetFont('helvetica', 'I', 24);
+        $pdf->Cell(0, 15, 'No events scheduled for today', 0, 1, 'C');
     } else {
-        $pdf->SetFont('helvetica', 'B', 14);
-        $pdf->Cell(0, 8, 'Today\'s Events:', 0, 1, 'L');
-        $pdf->Ln(5);
+        $pdf->SetFont('helvetica', 'B', 24);
+        $pdf->Cell(0, 12, 'Today\'s Events:', 0, 1, 'L');
+        $pdf->Ln(8);
 
         foreach ($events as $event) {
-            $pdf->SetFont('helvetica', 'B', 12);
+            // Time - MUCH larger and bold (was 12, now 28)
+            $pdf->SetFont('helvetica', 'B', 28);
 
             // Format time
             if (isset($event['all_day']) && $event['all_day']) {
@@ -252,18 +256,23 @@ function createCalendarPDF($events) {
                 }
             }
 
-            // Event title and time
-            $pdf->Cell(0, 8, $timeStr, 0, 1, 'L');
-            $pdf->SetFont('helvetica', '', 11);
-            $pdf->Cell(0, 6, $event['title'] ?? 'Untitled Event', 0, 1, 'L');
+            $pdf->Cell(0, 14, $timeStr, 0, 1, 'L');
 
-            // Description if available
+            // Event title - DARK BLUE and MUCH larger (was 11, now 24)
+            $pdf->SetFont('helvetica', 'B', 24);
+            $pdf->SetTextColor(0, 51, 102); // Dark blue color
+            $pdf->Cell(0, 12, $event['title'] ?? 'Untitled Event', 0, 1, 'L');
+
+            // Reset color to black for description
+            $pdf->SetTextColor(0, 0, 0);
+
+            // Description if available - larger (was 9, now 18)
             if (!empty($event['description'])) {
-                $pdf->SetFont('helvetica', 'I', 9);
-                $pdf->MultiCell(0, 5, substr($event['description'], 0, 200), 0, 'L');
+                $pdf->SetFont('helvetica', '', 18);
+                $pdf->MultiCell(0, 9, substr($event['description'], 0, 200), 0, 'L');
             }
 
-            $pdf->Ln(3);
+            $pdf->Ln(8);
         }
     }
 
