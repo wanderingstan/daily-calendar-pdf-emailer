@@ -1,0 +1,36 @@
+# Environment variables - NEVER commit credentials!
+.env
+.env.*
+!.env.example
+
+error_log
+
+# Composer dependencies
+/vendor/
+composer.lock
+
+# Generated PDF files (test outputs)
+*.pdf
+calendar-test-*.pdf
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# PHP temporary files
+*.log
+*.tmp
+
+# System files
+Thumbs.db
+.Spotlight-V100
+.Trashes
+
+# Backup files
+*.bak
+*.backup
+*~
