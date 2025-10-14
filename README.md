@@ -25,22 +25,27 @@ composer require johngrogg/ics-parser
 1. **Clone/upload the project files to your server**
 
 2. **Install dependencies:**
+
 ```bash
 cd ~/calendar-printer
 composer install
 ```
 
 3. **Create your .env file:**
+
 ```bash
 cp .env.example .env
 nano .env
 ```
+
 Fill in your actual values (calendar URLs, email settings, etc.)
 
 4. **Test it:**
+
 ```bash
 php daily_calendar.php --test
 ```
+
 Check the generated PDF file to make sure it looks good.
 
 5. **Set up the cron job** (see below)
@@ -49,8 +54,8 @@ Check the generated PDF file to make sure it looks good.
 
 ```
 ~/                              (your home directory)
-├── .env                        (sensitive config - NOT in public_html!)
 ├── calendar_printer/           (your script directory)
+│   ├── .env                    (sensitive config - NOT in public_html!)
 │   ├── daily_calendar.php
 │   ├── composer.json
 │   └── vendor/
@@ -61,12 +66,13 @@ Check the generated PDF file to make sure it looks good.
 ## Configuration Steps
 
 ### 1. Create .env File
-Create a file called `.env` in your home directory (one level above public_html):
+
+Create a file called `.env` in the directory:
 
 ```bash
 # Calendar Configuration
-CALENDAR_ICAL_URL="https://calendar.google.com/calendar/ical/vern.and.anabeth%40gmail.com/public/basic.ics"
-PRINTER_EMAIL="vern.and.stans.printer@print.epsonconnect.com"
+CALENDAR_ICAL_URL="https://calendar.google.com/calendar/ical/abcdefg%40gmail.com/public/basic.ics"
+PRINTER_EMAIL="your_printer@print.epsonconnect.com"
 TIMEZONE="America/Denver"
 
 # SMTP Configuration
@@ -79,11 +85,13 @@ FROM_NAME="Calendar Printer"
 ```
 
 **Important:**
+
 - Replace the values with your actual credentials
 - For the calendar URL, get the "Secret address in iCal format" from Google Calendar settings
 - For Gmail: Enable 2FA and generate an App Password
 
 ### 2. Secure the .env File
+
 Set proper permissions so only you can read it:
 
 ```bash
@@ -91,6 +99,7 @@ chmod 600 ~/.env
 ```
 
 ### 3. Get Your Calendar iCal URL
+
 1. Go to Google Calendar settings
 2. Find the calendar you want to share
 3. Go to "Integrate calendar" section
@@ -98,6 +107,7 @@ chmod 600 ~/.env
 5. Put it in your .env file
 
 ### 4. Set Up Cron Job
+
 Add this to your crontab to run daily at 7 AM:
 
 ```bash
@@ -105,6 +115,7 @@ crontab -e
 ```
 
 Add this line (adjust the path to match your setup):
+
 ```
 0 7 * * * /usr/bin/php /home/yourusername/calendar_printer/daily_calendar.php
 ```
@@ -114,17 +125,21 @@ Add this line (adjust the path to match your setup):
 Run the script manually first to test:
 
 ### Test Mode (saves PDF to file instead of emailing)
+
 ```bash
 php daily_calendar.php --test
 ```
+
 This will create a file like `calendar-test-2025-10-14.pdf` in the script directory.
 
 ### Test with Custom Filename
+
 ```bash
 php daily_calendar.php --output=my-test.pdf
 ```
 
 ### Normal Mode (sends to printer)
+
 ```bash
 php daily_calendar.php
 ```
@@ -134,13 +149,16 @@ php daily_calendar.php
 ## Troubleshooting
 
 ### Common Issues:
+
 1. **Calendar not found**: Make sure the iCal URL is correct and accessible
 2. **Email not sending**: Check SMTP credentials and Gmail app password
 3. **PDF creation fails**: Ensure TCPDF is installed via Composer
 4. **Permission errors**: Make sure PHP has write permissions for temporary files
 
 ### Debug Mode:
+
 Add this to the top of the script for more verbose output:
+
 ```php
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
@@ -158,6 +176,7 @@ ini_set('display_errors', 1);
 ## Why This Approach is Better
 
 **Security Benefits:**
+
 - Credentials are separate from code
 - .env file is outside web root (can't be accessed via browser)
 - Easy to update credentials without touching code
@@ -167,6 +186,7 @@ ini_set('display_errors', 1);
 ## Printer Requirements
 
 Make sure your Epson printer:
+
 - Is connected to Epson Connect
 - Has the correct email address configured
 - Is set to automatically print incoming emails
