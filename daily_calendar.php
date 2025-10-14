@@ -70,8 +70,15 @@ function fetchAllCalendarEvents($calendarUrls) {
     foreach ($calendarUrls as $index => $url) {
         try {
             echo "Fetching calendar " . ($index + 1) . " of " . count($calendarUrls) . "...\n";
+            echo "  URL: " . $url . "\n";
             $events = fetchCalendarEvents($url);
             echo "  Found " . count($events) . " events (including recurring instances)\n";
+
+            // Tag each event with its source URL for debugging
+            foreach ($events as &$event) {
+                $event['source_url'] = $url;
+            }
+
             $allEvents = array_merge($allEvents, $events);
         } catch (Exception $e) {
             echo "  Warning: Failed to fetch calendar from " . substr($url, 0, 50) . "...: " . $e->getMessage() . "\n";
@@ -141,8 +148,8 @@ function getTodayEvents($events) {
     $today = date('Y-m-d');
     $todayEvents = [];
 
-    echo "DEBUG: Looking for events on: $today\n";
-    echo "DEBUG: First 5 events:\n";
+    echo "\nDEBUG: Looking for events on: $today\n";
+    echo "DEBUG: First 5 events from all calendars:\n";
 
     $count = 0;
     foreach ($events as $event) {
@@ -153,13 +160,26 @@ function getTodayEvents($events) {
         $eventDate = date('Y-m-d', $event['start']);
 
         // Debug first few events
-        if ($count < 5) {
-            echo "  - " . ($event['title'] ?? 'No title') . " on $eventDate (timestamp: {$event['start']})\n";
-            $count++;
-        }
+        // if ($count < 5) {
+        //     $sourceUrl = isset($event['source_url']) ? $event['source_url'] : 'unknown';
+        //     echo "  - " . ($event['title'] ?? 'No title') . " on $eventDate\n";
+        //     echo "    Source: $sourceUrl\n";
+        //     $count++;
+        // }
 
         if ($eventDate === $today) {
             $todayEvents[] = $event;
+        }
+    }
+
+    // Show today's events with their sources
+    if (count($todayEvents) > 0) {
+        echo "\nDEBUG: Events found for TODAY ($today):\n";
+        foreach ($todayEvents as $event) {
+            $timeStr = date('g:i A', $event['start']);
+            $sourceUrl = isset($event['source_url']) ? $event['source_url'] : 'unknown';
+            echo "  - $timeStr: " . ($event['title'] ?? 'No title') . "\n";
+            echo "    Source: $sourceUrl...\n";
         }
     }
 
