@@ -5,10 +5,45 @@
 Install these libraries using Composer:
 
 ```bash
+cd ~/calendar-printer
+composer install
+```
+
+Or if you need to install them individually:
+
+```bash
 composer require phpmailer/phpmailer
 composer require tecnickcom/tcpdf
 composer require vlucas/phpdotenv
+composer require johngrogg/ics-parser
 ```
+
+**Note:** The `composer install` command will read the `composer.json` file and install all required dependencies automatically.
+
+## Quick Start
+
+1. **Clone/upload the project files to your server**
+
+2. **Install dependencies:**
+```bash
+cd ~/calendar-printer
+composer install
+```
+
+3. **Create your .env file:**
+```bash
+cp .env.example .env
+nano .env
+```
+Fill in your actual values (calendar URLs, email settings, etc.)
+
+4. **Test it:**
+```bash
+php daily_calendar.php --test
+```
+Check the generated PDF file to make sure it looks good.
+
+5. **Set up the cron job** (see below)
 
 ## Folder Structure (Recommended for Security)
 
@@ -43,7 +78,7 @@ FROM_EMAIL="your-email@gmail.com"
 FROM_NAME="Calendar Printer"
 ```
 
-**Important:** 
+**Important:**
 - Replace the values with your actual credentials
 - For the calendar URL, get the "Secret address in iCal format" from Google Calendar settings
 - For Gmail: Enable 2FA and generate an App Password
@@ -77,9 +112,24 @@ Add this line (adjust the path to match your setup):
 ## Testing
 
 Run the script manually first to test:
+
+### Test Mode (saves PDF to file instead of emailing)
+```bash
+php daily_calendar.php --test
+```
+This will create a file like `calendar-test-2025-10-14.pdf` in the script directory.
+
+### Test with Custom Filename
+```bash
+php daily_calendar.php --output=my-test.pdf
+```
+
+### Normal Mode (sends to printer)
 ```bash
 php daily_calendar.php
 ```
+
+**Always test first!** Run with `--test` to verify the PDF looks good before setting up the cron job.
 
 ## Troubleshooting
 
@@ -120,4 +170,3 @@ Make sure your Epson printer:
 - Is connected to Epson Connect
 - Has the correct email address configured
 - Is set to automatically print incoming emails
-
