@@ -17,6 +17,7 @@ ini_set('display_errors', 1);
 require_once __DIR__ . '/vendor/autoload.php';
 
 use Dotenv\Dotenv;
+use ICal\ICal;
 
 // Parse command line arguments
 $testMode = false;
@@ -70,7 +71,7 @@ function fetchAllCalendarEvents($calendarUrls) {
         try {
             echo "Fetching calendar " . ($index + 1) . " of " . count($calendarUrls) . "...\n";
             $events = fetchCalendarEvents($url);
-            echo "  Found " . count($events) . " total events\n";
+            echo "  Found " . count($events) . " events (including recurring instances)\n";
             $allEvents = array_merge($allEvents, $events);
         } catch (Exception $e) {
             echo "  Warning: Failed to fetch calendar from " . substr($url, 0, 50) . "...: " . $e->getMessage() . "\n";
@@ -82,104 +83,55 @@ function fetchAllCalendarEvents($calendarUrls) {
 }
 
 /**
- * Fetch and parse iCal data from Google Calendar
+ * Fetch and parse iCal data from Google Calendar using ICal library
  */
 function fetchCalendarEvents($calendarUrl) {
-    $icalData = file_get_contents($calendarUrl);
-    if ($icalData === false) {
-        throw new Exception('Failed to fetch calendar data');
-    }
-
-    return parseICalEvents($icalData);
-}
-
-/**
- * Simple iCal parser for VEVENT entries
- */
-function parseICalEvents($icalData) {
-    $events = [];
-    $lines = explode("\n", $icalData);
-    $currentEvent = null;
-
-    foreach ($lines as $line) {
-        $line = trim($line);
-
-        if ($line === 'BEGIN:VEVENT') {
-            $currentEvent = [];
-        } elseif ($line === 'END:VEVENT') {
-            if ($currentEvent) {
-                $events[] = $currentEvent;
-                $currentEvent = null;
-            }
-        } elseif ($currentEvent !== null && strpos($line, ':') !== false) {
-            // Split only on first colon to preserve colons in values
-            $colonPos = strpos($line, ':');
-            $key = substr($line, 0, $colonPos);
-            $value = substr($line, $colonPos + 1);
-
-            // Handle common iCal fields
-            if ($key === 'SUMMARY' || strpos($key, 'SUMMARY') === 0) {
-                $currentEvent['title'] = $value;
-            } elseif ($key === 'DTSTART' || strpos($key, 'DTSTART') === 0) {
-                // Handle DTSTART with or without parameters like DTSTART;TZID=...
-                $currentEvent['start'] = parseICalDate($value);
-                $currentEvent['all_day'] = strpos($key, 'VALUE=DATE') !== false && strpos($key, 'VALUE=DATE-TIME') === false;
-            } elseif ($key === 'DTEND' || strpos($key, 'DTEND') === 0) {
-                $currentEvent['end'] = parseICalDate($value);
-            } elseif ($key === 'DESCRIPTION' || strpos($key, 'DESCRIPTION') === 0) {
-                $currentEvent['description'] = $value;
-            }
-        }
-    }
-
-    return $events;
-}
-
-/**
- * Parse iCal date format to timestamp
- */
-function parseICalDate($dateString) {
     global $TIMEZONE;
 
-    // Clean up the string - remove any carriage returns or extra whitespace
-    $dateString = trim($dateString);
+    try {
+        $ical = new ICal('ICal.ics', array(
+            'defaultSpan'                 => 2,     // Default span in years
+            'defaultTimeZone'             => $TIMEZONE,
+            'defaultWeekStart'            => 'MO',
+            'disableCharacterReplacement' => false,
+            'filterDaysAfter'             => null,  // Don't filter - we'll do it ourselves
+            'filterDaysBefore'            => null,  // Don't filter - we'll do it ourselves
+            'skipRecurrence'              => false, // IMPORTANT: process recurring events
+        ));
 
-    // Check if it's a date-only format (8 characters: YYYYMMDD)
-    if (strlen($dateString) === 8 && ctype_digit($dateString)) {
-        // Date only format: YYYYMMDD
-        $dt = DateTime::createFromFormat('Ymd', $dateString, new DateTimeZone($TIMEZONE));
-        if ($dt) {
-            return $dt->getTimestamp();
+        $ical->initUrl($calendarUrl);
+
+        $events = [];
+        $icalEvents = $ical->events();
+
+        foreach ($icalEvents as $event) {
+            // Get the start timestamp
+            $startTimestamp = $ical->iCalDateToUnixTimestamp($event->dtstart);
+            $endTimestamp = isset($event->dtend) ? $ical->iCalDateToUnixTimestamp($event->dtend) : null;
+
+            // Determine if all-day by comparing start and end times
+            $isAllDay = false;
+            if ($endTimestamp && $startTimestamp) {
+                // If times are exactly midnight and 24 hours apart, likely all-day
+                $startHour = date('H', $startTimestamp);
+                $startMin = date('i', $startTimestamp);
+                $isAllDay = ($startHour == '00' && $startMin == '00');
+            }
+
+            $events[] = [
+                'title' => $event->summary ?? 'Untitled Event',
+                'start' => $startTimestamp,
+                'end' => $endTimestamp,
+                'description' => $event->description ?? '',
+                'all_day' => $isAllDay,
+            ];
         }
+
+        return $events;
+
+    } catch (Exception $e) {
+        throw new Exception('Failed to fetch calendar data: ' . $e->getMessage());
     }
-
-    // Check if it's a datetime format with Z suffix (UTC time)
-    if (strlen($dateString) >= 16 && substr($dateString, -1) === 'Z') {
-        // UTC format: YYYYMMDDTHHMMSSZ
-        $cleanDate = substr($dateString, 0, 15);
-
-        // Parse as UTC, then convert to local timezone
-        $dt = DateTime::createFromFormat('Ymd\THis', $cleanDate, new DateTimeZone('UTC'));
-        if ($dt) {
-            // Convert to the configured timezone
-            $dt->setTimezone(new DateTimeZone($TIMEZONE));
-            return $dt->getTimestamp();
-        }
-    }
-
-    // Check if it's a datetime format without Z (local time)
-    if (strlen($dateString) >= 15) {
-        $cleanDate = substr($dateString, 0, 15);
-
-        // DateTime format: YYYYMMDDTHHMMSS (assume local timezone)
-        $dt = DateTime::createFromFormat('Ymd\THis', $cleanDate, new DateTimeZone($TIMEZONE));
-        if ($dt) {
-            return $dt->getTimestamp();
-        }
-    }
-
-    // Fallback
-    return time();
 }
 
 /**
@@ -189,8 +141,23 @@ function getTodayEvents($events) {
     $today = date('Y-m-d');
     $todayEvents = [];
 
+    echo "DEBUG: Looking for events on: $today\n";
+    echo "DEBUG: First 5 events:\n";
+
+    $count = 0;
     foreach ($events as $event) {
+        if (!isset($event['start'])) {
+            continue; // Skip events without start time
+        }
+
         $eventDate = date('Y-m-d', $event['start']);
+
+        // Debug first few events
+        if ($count < 5) {
+            echo "  - " . ($event['title'] ?? 'No title') . " on $eventDate (timestamp: {$event['start']})\n";
+            $count++;
+        }
+
         if ($eventDate === $today) {
             $todayEvents[] = $event;
         }
