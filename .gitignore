@@ -7,7 +7,7 @@ error_log
 
 # Composer dependencies
 /vendor/
-composer.lock
+# composer.lock
 
 # Generated PDF files (test outputs)
 *.pdf
